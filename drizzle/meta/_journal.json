@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1791453712468,
+      "tag": "0000_stiff_jackal",
+      "breakpoints": true
+    }
+  ]
+}
