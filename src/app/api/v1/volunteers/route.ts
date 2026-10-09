@@ -77,14 +77,32 @@ export async function POST(req: NextRequest) {
   return json({ message: "Volunteer registered", volunteer: row }, 201);
 }
 
-// PATCH /api/v1/volunteers — update status / assignment (staff only).
+// PATCH /api/v1/volunteers — full edit: name/mobile/email/district/city/
+// area/availability/status/responsibility/coordinator + donor assignment.
 export async function PATCH(req: NextRequest) {
   const auth = requireStaff(await getAuthContext(req));
   const body = await parseBody(req);
   const id = Number(body.id);
   if (!Number.isInteger(id)) throw new ApiError(400, "id is required");
 
+  const [existing] = await db.select().from(volunteers).where(eq(volunteers.id, id)).limit(1);
+  if (!existing) throw new ApiError(404, "Volunteer not found");
+
   const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name !== undefined) {
+    const name = String(body.name ?? "").trim();
+    if (!name) throw new ApiError(400, "Volunteer name cannot be empty");
+    updates.name = name;
+  }
+  if (body.mobile !== undefined) {
+    const mobile = String(body.mobile ?? "").trim();
+    if (!/^[6-9]\d{9}$/.test(mobile)) throw new ApiError(400, "Volunteer mobile must be a valid 10-digit number");
+    updates.mobile = mobile;
+  }
+  if (body.email !== undefined) updates.email = body.email ? String(body.email) : null;
+  if (body.district !== undefined) updates.district = body.district ? String(body.district) : null;
+  if (body.city !== undefined) updates.city = body.city ? String(body.city) : null;
+  if (body.availability !== undefined) updates.availability = String(body.availability ?? "FLEXIBLE").toUpperCase() || "FLEXIBLE";
   if (body.status) {
     const status = String(body.status).toUpperCase();
     if (!VOLUNTEER_STATUSES.includes(status)) throw new ApiError(400, "Invalid volunteer status");
@@ -114,4 +132,33 @@ export async function PATCH(req: NextRequest) {
   });
 
   return json({ message: "Volunteer updated", volunteer: row });
+}
+
+// DELETE /api/v1/volunteers — remove a volunteer (staff only).
+export async function DELETE(req: NextRequest) {
+  const auth = requireStaff(await getAuthContext(req));
+  let id: number | null = null;
+  try {
+    const body = await parseBody(req);
+    if (body.id !== undefined) id = Number(body.id);
+  } catch {
+    // fall through to query param
+  }
+  if (id === null || !Number.isInteger(id)) {
+    const qp = req.nextUrl.searchParams.get("id");
+    if (qp) id = Number(qp);
+  }
+  if (id === null || !Number.isInteger(id)) throw new ApiError(400, "Volunteer id is required (body.id or ?id=)");
+
+  const [existing] = await db.select().from(volunteers).where(eq(volunteers.id, id)).limit(1);
+  if (!existing) throw new ApiError(404, "Volunteer not found");
+
+  await db.delete(volunteers).where(eq(volunteers.id, id));
+
+  await writeAuditLog({
+    userId: auth.userId, action: "VOLUNTEER_DELETED", entityType: "volunteers",
+    entityId: id, details: { name: existing.name }, ipAddress: getClientIp(req),
+  });
+
+  return json({ message: "Volunteer deleted", volunteer: { id: existing.id, name: existing.name } });
 }

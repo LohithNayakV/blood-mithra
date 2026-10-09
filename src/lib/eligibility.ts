@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { systemSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { parseJsonField } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Blood donation eligibility engine.
@@ -41,7 +42,11 @@ export async function getEligibilityRules(): Promise<EligibilityRules> {
       .from(systemSettings)
       .where(eq(systemSettings.key, "eligibility_rules"))
       .limit(1);
-    if (row?.value) return { ...DEFAULT_ELIGIBILITY_RULES, ...(row.value as Partial<EligibilityRules>) };
+    if (row?.value) {
+      // MySQL returns JSON columns as strings — parse before spreading.
+      const stored = parseJsonField<Partial<EligibilityRules> | null>(row.value, null);
+      if (stored) return { ...DEFAULT_ELIGIBILITY_RULES, ...stored };
+    }
   } catch {
     // fall through to defaults
   }

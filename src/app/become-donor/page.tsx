@@ -257,9 +257,7 @@ export default function BecomeDonorPage() {
               />
               <span>Notify me about emergency blood requests near me.</span>
             </label>
-          </div>
-
-          <div className="flex flex-wrap gap-3" style={{ marginTop: 24 }}>
+          </div>            <div className="flex flex-wrap gap-3" style={{ marginTop: 24 }}>
             <button type="submit" className="bm-btn bm-btn-primary" disabled={loading}>
               {loading ? "Registering…" : "❤️ Register as a Donor"}
             </button>

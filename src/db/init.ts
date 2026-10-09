@@ -117,8 +117,10 @@ async function runSeedMigrations() {
       value: {
         name: "Blood Mithra",
         tagline: "Every drop counts. Every donor is a hero.",
+        logoUrl: "",
         contactEmail: "help@bloodmithra.org",
         contactPhone: "1800-000-0000",
+        address: "Bengaluru, Karnataka, India",
       },
       description: "Public site configuration",
       category: "general",

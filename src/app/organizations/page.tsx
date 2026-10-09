@@ -22,7 +22,7 @@ export default async function OrganizationsPage() {
     const rows = await db
       .select({
         org: organizations,
-        campCount: sql<number>`count(${bloodCamps.id})::int`,
+        campCount: sql<number>`count(${bloodCamps.id})`,
       })
       .from(organizations)
       .leftJoin(bloodCamps, eq(bloodCamps.organizerId, organizations.id))
@@ -51,7 +51,7 @@ export default async function OrganizationsPage() {
             No organizations registered yet.
           </div>
         ) : (
-          <div className="bm-grid-3">
+          <div className="bm-grid-3" style={{ marginTop: 20 }}>
             {orgs.map((org) => (
               <div key={org.id} className="bm-card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className="flex items-start justify-between">

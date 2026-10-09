@@ -100,8 +100,7 @@ export default function FindDonorsPage() {
             <span className="bm-eyebrow">Find donors</span>
             <h1 className="bm-h2">Search our donor network</h1>
             <p className="bm-lead" style={{ marginTop: 10 }}>
-              Filter by blood group, location, availability and eligibility. Contact details are shared
-              only with verified staff — public results show masked numbers.
+              Filter by blood group, location, availability and eligibility. Contact details are shared only with verified staff — public results show masked numbers.
             </p>
           </div>
         </div>

@@ -49,19 +49,50 @@ export async function POST(req: NextRequest) {
   return json({ message: "Hospital registered", hospital: row }, 201);
 }
 
-// PATCH /api/v1/hospitals — update hospital (staff only).
+// PATCH /api/v1/hospitals — full edit (staff only).
 export async function PATCH(req: NextRequest) {
   requireStaff(await getAuthContext(req));
   const body = await parseBody(req);
   const id = Number(body.id);
   if (!Number.isInteger(id)) throw new ApiError(400, "id is required");
-  await db.update(hospitals).set({
-    ...(body.name ? { name: String(body.name) } : {}),
-    ...(body.status ? { status: String(body.status) } : {}),
-    updatedAt: new Date(),
-  }).where(eq(hospitals.id, id));
-  // MySQL doesn't support returning(), fetch the updated hospital
+  const [existing] = await db.select().from(hospitals).where(eq(hospitals.id, id)).limit(1);
+  if (!existing) throw new ApiError(404, "Hospital not found");
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const strOrNull = (v: unknown) => (v === undefined ? undefined : v === null || v === "" ? null : String(v));
+  if (body.name !== undefined) {
+    const v = String(body.name ?? "").trim();
+    if (!v) throw new ApiError(400, "Hospital name cannot be empty");
+    updates.name = v;
+  }
+  for (const k of ["address", "city", "district", "pincode", "latitude", "longitude", "phone", "email", "type"] as const) {
+    const v = strOrNull((body as Record<string, unknown>)[k]);
+    if (v !== undefined) updates[k] = v;
+  }
+  if (body.status !== undefined) {
+    const s = String(body.status).toUpperCase();
+    if (!["ACTIVE", "INACTIVE"].includes(s)) throw new ApiError(400, "Status must be ACTIVE or INACTIVE");
+    updates.status = s;
+  }
+  await db.update(hospitals).set(updates).where(eq(hospitals.id, id));
   const [row] = await db.select().from(hospitals).where(eq(hospitals.id, id)).limit(1);
-  if (!row) throw new ApiError(404, "Hospital not found");
   return json({ message: "Hospital updated", hospital: row });
+}
+
+// DELETE /api/v1/hospitals — remove a hospital (staff only).
+export async function DELETE(req: NextRequest) {
+  requireStaff(await getAuthContext(req));
+  let id: number | null = null;
+  try {
+    const body = await parseBody(req);
+    if (body.id !== undefined) id = Number(body.id);
+  } catch { /* query param fallback */ }
+  if (id === null || !Number.isInteger(id)) {
+    const qp = req.nextUrl.searchParams.get("id");
+    if (qp) id = Number(qp);
+  }
+  if (id === null || !Number.isInteger(id)) throw new ApiError(400, "Hospital id is required");
+  const [existing] = await db.select().from(hospitals).where(eq(hospitals.id, id)).limit(1);
+  if (!existing) throw new ApiError(404, "Hospital not found");
+  await db.delete(hospitals).where(eq(hospitals.id, id));
+  return json({ message: "Hospital deleted", hospital: { id: existing.id } });
 }

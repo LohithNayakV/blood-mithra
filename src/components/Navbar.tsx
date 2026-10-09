@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getStoredUser, clearSession } from "@/lib/client";
+import { SiteBrand } from "@/components/Site";
 
 const NAV_LINKS = [
   { href: "/find-donors", label: "Find Donors" },
@@ -27,10 +28,7 @@ export function Navbar() {
   return (
     <header className="bm-navbar">
       <div className="bm-container bm-navbar-inner">
-        <Link href="/" className="bm-brand">
-          <span className="bm-brand-mark">🩸</span>
-          Blood&nbsp;Mithra
-        </Link>
+        <SiteBrand />
 
         <nav className="bm-nav-links" aria-label="Primary">
           {NAV_LINKS.map((l) => (
@@ -61,7 +59,6 @@ export function Navbar() {
           )}
           <button
             className="bm-btn bm-btn-outline bm-btn-sm md:hidden"
-            style={{ display: "inline-flex" }}
             aria-label="Toggle menu"
             onClick={() => setOpen((v) => !v)}
           >

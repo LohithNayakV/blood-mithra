@@ -103,21 +103,68 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     return json({ message: `Wave ${nextWave} sent to ${targets.length} donor(s)`, request: updated });
   }
 
-  // --- Advance lifecycle status ----------------------------------------------
+  // --- Full edit and/or lifecycle status change ------------------------------
   const body = await parseBody(req);
-  const status = String(body.status ?? "").toUpperCase();
-  if (!LIFECYCLE.includes(status)) {
-    throw new ApiError(400, `Invalid status. Lifecycle: ${LIFECYCLE.join(" → ")}`);
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+  const URGENCIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+  if (body.bloodGroup !== undefined) {
+    const v = String(body.bloodGroup).toUpperCase();
+    if (!BLOOD_GROUPS.includes(v)) throw new ApiError(400, "Invalid blood group");
+    updates.bloodGroup = v;
+  }
+  if (body.unitsRequired !== undefined) {
+    const v = Number(body.unitsRequired);
+    if (!Number.isInteger(v) || v < 1 || v > 20) throw new ApiError(400, "unitsRequired must be 1–20");
+    updates.unitsRequired = v;
+  }
+  if (body.urgency !== undefined) {
+    const v = String(body.urgency).toUpperCase();
+    if (!URGENCIES.includes(v)) throw new ApiError(400, "Invalid urgency");
+    updates.urgency = v;
+  }
+  if (body.hospitalName !== undefined) updates.hospitalName = body.hospitalName ? String(body.hospitalName) : null;
+  if (body.city !== undefined) updates.city = body.city ? String(body.city) : null;
+  if (body.district !== undefined) updates.district = body.district ? String(body.district) : null;
+  if (body.requesterName !== undefined) updates.requesterName = body.requesterName ? String(body.requesterName) : null;
+  if (body.requesterPhone !== undefined) updates.requesterPhone = body.requesterPhone ? String(body.requesterPhone) : null;
+  if (body.contactInfo !== undefined) updates.contactInfo = body.contactInfo ? String(body.contactInfo) : null;
+  if (body.details !== undefined) updates.details = body.details ? String(body.details) : null;
+
+  if (body.status !== undefined) {
+    const status = String(body.status ?? "").toUpperCase();
+    if (!LIFECYCLE.includes(status)) {
+      throw new ApiError(400, `Invalid status. Lifecycle: ${LIFECYCLE.join(" → ")}`);
+    }
+    updates.status = status;
   }
 
-  await db.update(bloodRequests).set({ status, updatedAt: new Date() }).where(eq(bloodRequests.id, requestId));
+  if (Object.keys(updates).length <= 1) throw new ApiError(400, "No editable fields provided");
+
+  await db.update(bloodRequests).set(updates).where(eq(bloodRequests.id, requestId));
   // MySQL doesn't support returning(), fetch the updated request
   const [updated] = await db.select().from(bloodRequests).where(eq(bloodRequests.id, requestId)).limit(1);
 
   await writeAuditLog({
-    userId: auth.userId, action: "REQUEST_STATUS_CHANGED", entityType: "blood_requests",
-    entityId: requestId, details: { from: request.status, to: status }, ipAddress: getClientIp(req),
+    userId: auth.userId, action: "REQUEST_UPDATED", entityType: "blood_requests",
+    entityId: requestId, details: { from: request.status, changes: Object.keys(updates) }, ipAddress: getClientIp(req),
   });
 
-  return json({ message: `Request status updated to ${status}`, request: updated });
+  return json({ message: `Request #${requestId} updated`, request: updated });
+}
+
+export async function DELETE(req: NextRequest, ctx: Ctx) {
+  const auth = requireStaff(await getAuthContext(req));
+  const { id } = await ctx.params;
+  const requestId = Number(id);
+  if (!Number.isInteger(requestId)) throw new ApiError(400, "Invalid request id");
+  const [existing] = await db.select().from(bloodRequests).where(eq(bloodRequests.id, requestId)).limit(1);
+  if (!existing) throw new ApiError(404, "Blood request not found");
+  await db.delete(bloodRequests).where(eq(bloodRequests.id, requestId));
+  await writeAuditLog({
+    userId: auth.userId, action: "REQUEST_DELETED", entityType: "blood_requests",
+    entityId: requestId, details: { bloodGroup: existing.bloodGroup }, ipAddress: getClientIp(req),
+  });
+  return json({ message: `Request #${requestId} deleted` });
 }

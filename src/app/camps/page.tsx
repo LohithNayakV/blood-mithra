@@ -35,7 +35,9 @@ export default async function CampsPage() {
               Walk in, donate, save a life. Camps are organized by partner NGOs, hospitals, blood banks and corporates.
             </p>
           </div>
-          <Link href="/become-donor" className="bm-btn bm-btn-primary">❤️ Become a Donor</Link>
+          <Link href="/become-donor" className="bm-btn bm-btn-primary">
+            ❤️ Become a Donor
+          </Link>
         </div>
 
         {upcoming.length === 0 ? (

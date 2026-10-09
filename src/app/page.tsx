@@ -2,23 +2,54 @@ import Link from "next/link";
 import { db } from "@/db";
 import { donors, bloodRequests, donations, volunteers, bloodCamps, systemSettings } from "@/db/schema";
 import { sql, eq } from "drizzle-orm";
+import { parseJsonField } from "@/lib/api";
+import { normalizeSiteSettings } from "@/lib/site";
+import { PageHeroImage } from "@/components/PageContent";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Blood Mithra — India's Community Blood Donor Network",
+  description:
+    "Blood Mithra connects voluntary blood donors with patients, hospitals and blood banks. Find donors by blood group and location, register as a donor, and respond to emergency blood requests.",
+};
 
-async function getStats() {
+type Stats = {
+  donors: number;
+  activeDonors: number;
+  donations: number;
+  requests: number;
+  fulfilled: number;
+  volunteers: number;
+  camps: number;
+  byBloodGroup: { bloodGroup: string; count: number }[];
+};
+
+export async function getSiteSettings() {
   try {
-    const [donorTotal] = await db.select({ c: sql<number>`count(*)::int` }).from(donors);
-    const [activeDonors] = await db.select({ c: sql<number>`count(*)::int` }).from(donors).where(sql`status IN ('ACTIVE','VERIFIED','REGULAR_DONOR')`);
-    const [donationTotal] = await db.select({ c: sql<number>`count(*)::int` }).from(donations);
-    const [requestTotal] = await db.select({ c: sql<number>`count(*)::int` }).from(bloodRequests);
-    const [fulfilled] = await db.select({ c: sql<number>`count(*)::int` }).from(bloodRequests).where(eq(bloodRequests.status, "FULFILLED"));
-    const [volunteerTotal] = await db.select({ c: sql<number>`count(*)::int` }).from(volunteers).where(eq(volunteers.status, "ACTIVE"));
-    const [campTotal] = await db.select({ c: sql<number>`count(*)::int` }).from(bloodCamps);
+    const [appSetting] = await db
+      .select()
+      .from(systemSettings)
+      .where(eq(systemSettings.key, "app"))
+      .limit(1);
+    return normalizeSiteSettings(parseJsonField<unknown>(appSetting?.value, null));
+  } catch {
+    return normalizeSiteSettings(null);
+  }
+}
+
+export async function getStats(): Promise<Stats> {
+  try {
+    const [donorTotal] = await db.select({ c: sql<number>`count(*)` }).from(donors);
+    const [activeDonors] = await db.select({ c: sql<number>`count(*)` }).from(donors).where(sql`status IN ('ACTIVE','VERIFIED','REGULAR_DONOR')`);
+    const [donationTotal] = await db.select({ c: sql<number>`count(*)` }).from(donations);
+    const [requestTotal] = await db.select({ c: sql<number>`count(*)` }).from(bloodRequests);
+    const [fulfilled] = await db.select({ c: sql<number>`count(*)` }).from(bloodRequests).where(eq(bloodRequests.status, "FULFILLED"));
+    const [volunteerTotal] = await db.select({ c: sql<number>`count(*)` }).from(volunteers).where(eq(volunteers.status, "ACTIVE"));
+    const [campTotal] = await db.select({ c: sql<number>`count(*)` }).from(bloodCamps);
     const byBloodGroup = await db.select({
       bloodGroup: donors.bloodGroup,
-      count: sql<number>`count(*)::int`,
+      count: sql<number>`count(*)`,
     }).from(donors).groupBy(donors.bloodGroup);
-    const [appSetting] = await db.select().from(systemSettings).where(eq(systemSettings.key, "app")).limit(1);
     return {
       donors: donorTotal.c,
       activeDonors: activeDonors.c,
@@ -28,12 +59,11 @@ async function getStats() {
       volunteers: volunteerTotal.c,
       camps: campTotal.c,
       byBloodGroup,
-      app: (appSetting?.value ?? null) as { tagline?: string } | null,
     };
   } catch {
     return {
       donors: 0, activeDonors: 0, donations: 0, requests: 0, fulfilled: 0,
-      volunteers: 0, camps: 0, byBloodGroup: [], app: null,
+      volunteers: 0, camps: 0, byBloodGroup: [],
     };
   }
 }
@@ -78,25 +108,32 @@ const TRUST = [
 ];
 
 export default async function HomePage() {
-  const stats = await getStats();
+  const [site, stats] = await Promise.all([getSiteSettings(), getStats()]);
   const maxBg = Math.max(1, ...stats.byBloodGroup.map((b) => b.count));
+
+  const homePage = site.pages.home;
 
   return (
     <main>
       {/* Hero */}
       <section className="bm-hero">
+        <div className="bm-container">
+          <PageHeroImage page={homePage} />
+        </div>
         <div className="bm-container bm-hero-grid">
           <div>
             <span className="bm-eyebrow">🩸 India&apos;s community blood donor network</span>
             <h1 className="bm-h1">
-              Every drop counts.<br />
+              {homePage.heroHeadline || "Every drop counts."}<br />
               <span style={{ color: "var(--bm-red)" }}>Be someone&apos;s lifeline.</span>
             </h1>
             <p className="bm-lead" style={{ marginTop: 20 }}>
-              {stats.app?.tagline ?? "Blood Mithra connects voluntary donors with patients, hospitals and blood banks — in minutes, not days."}
+              {homePage.heroSubcopy ?? "Blood Mithra connects voluntary donors with patients, hospitals and blood banks — in minutes, not days."}
             </p>
             <div className="flex flex-wrap gap-3" style={{ marginTop: 28 }}>
-              <Link href="/find-donors" className="bm-btn bm-btn-primary">🩸 Find Blood</Link>
+              <Link href={homePage.ctaHref || "/find-donors"} className="bm-btn bm-btn-primary">
+                {homePage.ctaLabel || "🩸 Find Blood"}
+              </Link>
               <Link href="/become-donor" className="bm-btn bm-btn-outline">❤️ Become a Donor</Link>
               <Link href="/emergency" className="bm-btn bm-btn-outline" style={{ borderColor: "var(--bm-red)", color: "var(--bm-red)" }}>🚨 Emergency Request</Link>
             </div>
@@ -208,14 +245,25 @@ export default async function HomePage() {
             <span className="bm-eyebrow">FAQ</span>
             <h2 className="bm-h2">Questions, answered</h2>
           </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {FAQS.map((f) => (
-              <div key={f.q} className="bm-faq-item">
-                <h3>{f.q}</h3>
-                <p>{f.a}</p>
-              </div>
-            ))}
-          </div>
+          {homePage.faqs && homePage.faqs.length > 0 ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {homePage.faqs.map((f) => (
+                <div key={f.q} className="bm-faq-item">
+                  <h3>{f.q}</h3>
+                  <p>{f.a}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {FAQS.map((f) => (
+                <div key={f.q} className="bm-faq-item">
+                  <h3>{f.q}</h3>
+                  <p>{f.a}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

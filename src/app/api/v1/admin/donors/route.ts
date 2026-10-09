@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
     id: r.donor.id,
     fullName: r.donor.fullName,
     mobile: r.donor.mobile,
+    email: r.donor.email,
     bloodGroup: r.donor.bloodGroup,
     age: computeAge(r.donor.dateOfBirth),
     city: r.donor.addressCity,
@@ -126,6 +127,7 @@ export async function PATCH(req: NextRequest) {
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   const action = String(body.action ?? "");
 
+  const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
   switch (action) {
     case "verify":
       updates.isProfileVerified = true;
@@ -143,10 +145,32 @@ export async function PATCH(req: NextRequest) {
     case "assign_volunteer":
       updates.assignedVolunteerId = body.volunteerId ? Number(body.volunteerId) : null;
       break;
+    case "edit":
     default:
+      if (body.fullName !== undefined) {
+        const v = String(body.fullName ?? "").trim();
+        if (!v || v.length < 3) throw new ApiError(400, "Donor name must be at least 3 characters");
+        updates.fullName = v;
+      }
+      if (body.mobile !== undefined) {
+        const v = String(body.mobile ?? "").trim();
+        if (!/^[6-9]\d{9}$/.test(v)) throw new ApiError(400, "Invalid donor mobile number");
+        updates.mobile = v;
+      }
+      if (body.email !== undefined) updates.email = body.email ? String(body.email) : null;
+      if (body.bloodGroup !== undefined) {
+        const v = String(body.bloodGroup ?? "").toUpperCase();
+        if (!BLOOD_GROUPS.includes(v)) throw new ApiError(400, "Invalid blood group");
+        updates.bloodGroup = v;
+      }
+      if (body.city !== undefined) updates.addressCity = body.city ? String(body.city) : null;
+      if (body.district !== undefined) updates.addressDistrict = body.district ? String(body.district) : null;
+      if (body.availabilityStatus !== undefined) updates.availabilityStatus = String(body.availabilityStatus).toUpperCase();
+      if (body.eligibilityStatus !== undefined) updates.eligibilityStatus = String(body.eligibilityStatus).toUpperCase();
       if (body.status) updates.status = String(body.status).toUpperCase();
       if (body.healthStatus) updates.healthStatus = String(body.healthStatus).toUpperCase();
       if (body.isProfileVerified !== undefined) updates.isProfileVerified = Boolean(body.isProfileVerified);
+      if (body.volunteerId !== undefined) updates.assignedVolunteerId = body.volunteerId ? Number(body.volunteerId) : null;
   }
 
   // Recompute derived status after admin changes.
@@ -204,4 +228,30 @@ export async function PUT(req: NextRequest) {
       "Content-Disposition": "attachment; filename=blood-mithra-donors.csv",
     },
   });
+}
+
+// DELETE /api/v1/admin/donors — remove a donor (admin only, cascades).
+export async function DELETE(req: NextRequest) {
+  const auth = requireAdmin(await getAuthContext(req));
+  let donorId: number | null = null;
+  try {
+    const body = await parseBody(req);
+    if (body.donorId !== undefined) donorId = Number(body.donorId);
+    else if (body.id !== undefined) donorId = Number(body.id);
+  } catch {
+    // fall through
+  }
+  if (donorId === null || !Number.isInteger(donorId)) {
+    const qp = req.nextUrl.searchParams.get("donorId") ?? req.nextUrl.searchParams.get("id");
+    if (qp) donorId = Number(qp);
+  }
+  if (donorId === null || !Number.isInteger(donorId)) throw new ApiError(400, "donorId is required");
+  const [existing] = await db.select().from(donors).where(eq(donors.id, donorId)).limit(1);
+  if (!existing) throw new ApiError(404, "Donor not found");
+  await db.delete(donors).where(eq(donors.id, donorId));
+  await writeAuditLog({
+    userId: auth.userId, action: "ADMIN_DONOR_DELETED", entityType: "donors",
+    entityId: donorId, details: { name: existing.fullName }, ipAddress: getClientIp(req),
+  });
+  return json({ message: "Donor deleted", donor: { id: existing.id } });
 }

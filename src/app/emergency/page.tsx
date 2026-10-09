@@ -65,8 +65,7 @@ export default function EmergencyPage() {
             <span className="bm-eyebrow" style={{ color: "var(--bm-red)" }}>🚨 Emergency</span>
             <h1 className="bm-h2">Emergency blood request</h1>
             <p className="bm-lead" style={{ marginTop: 10 }}>
-              Our backend instantly notifies nearby eligible donors in waves — nearest and most
-              responsive first. No account needed for emergencies.
+              Our backend instantly notifies nearby eligible donors in waves — nearest and most responsive first. No account needed for emergencies.
             </p>
           </div>
         </div>
