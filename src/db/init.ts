@@ -1,4 +1,10 @@
 import "dotenv/config";
+import { createHash } from "crypto";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+import mysql from "mysql2/promise";
+import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
+import { migrate } from "drizzle-orm/mysql2/migrator";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import {
@@ -42,6 +48,120 @@ import { desc, eq } from "drizzle-orm";
 // track completed setup steps, and runs each pending migration exactly once.
 // Safe to run on every server start (idempotent).
 // ---------------------------------------------------------------------------
+
+const MIGRATIONS_FOLDER = join(process.cwd(), "drizzle");
+const DRIZZLE_JOURNAL_TABLE = "__drizzle_migrations";
+
+function parseDatabaseUrl(url: string) {
+  const u = new URL(url);
+  return {
+    host: u.hostname || "127.0.0.1",
+    port: Number(u.port || "3306"),
+    user: decodeURIComponent(u.username || "root"),
+    password: decodeURIComponent(u.password || ""),
+    database: decodeURIComponent(u.pathname.replace(/^\//, "") || "app_db"),
+  };
+}
+
+interface JournalMigration {
+  tag: string;
+  when: number;
+  hash: string;
+  tables: string[];
+}
+
+/** Read drizzle/meta/_journal.json + each .sql file (same hash format the
+ * official migrator uses: sha256 of the raw file content). */
+function readJournalMigrations(migrationsFolder: string): JournalMigration[] {
+  const journalPath = join(migrationsFolder, "meta", "_journal.json");
+  if (!existsSync(journalPath)) return [];
+  const journal = JSON.parse(readFileSync(journalPath, "utf-8")) as {
+    entries: { tag: string; when: number }[];
+  };
+  return journal.entries.map((e) => {
+    const sqlText = readFileSync(join(migrationsFolder, `${e.tag}.sql`), "utf-8");
+    const tables = [...sqlText.matchAll(/create table\s+`?([A-Za-z0-9_]+)`?/gi)].map((m) =>
+      m[1].toLowerCase(),
+    );
+    return {
+      tag: e.tag,
+      when: e.when,
+      hash: createHash("sha256").update(sqlText).digest("hex"),
+      tables: [...new Set(tables)],
+    };
+  });
+}
+
+/**
+ * Ensure the database and all Drizzle tables exist.
+ *
+ * 1. `CREATE DATABASE IF NOT EXISTS` — a brand-new device only needs MySQL
+ *    running; no manual setup.
+ * 2. Baseline: journal entries whose tables already exist (DBs created by an
+ *    older script/`db push` predate the `__drizzle_migrations` journal) are
+ *    recorded as applied instead of re-running and failing with
+ *    "table already exists".
+ * 3. The official `migrate()` applies anything still pending.
+ */
+async function ensureSchema(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is required");
+  const creds = parseDatabaseUrl(databaseUrl);
+
+  const server = await mysql.createConnection({
+    host: creds.host,
+    port: creds.port,
+    user: creds.user,
+    password: creds.password,
+  });
+  try {
+    await server.query(`CREATE DATABASE IF NOT EXISTS \`${creds.database.replace(/`/g, "``")}\``);
+  } finally {
+    await server.end();
+  }
+
+  const conn = await mysql.createConnection({
+    host: creds.host,
+    port: creds.port,
+    user: creds.user,
+    password: creds.password,
+    database: creds.database,
+  });
+  try {
+    await conn.query(
+      `CREATE TABLE IF NOT EXISTS \`${DRIZZLE_JOURNAL_TABLE}\` (id serial primary key, hash text not null, created_at bigint)`,
+    );
+    const [appliedRows] = (await conn.query(
+      `SELECT hash, created_at FROM \`${DRIZZLE_JOURNAL_TABLE}\``,
+    )) as unknown as [{ hash: string; created_at: number | string }[]];
+    const applied = new Set(appliedRows.map((r) => Number(r.created_at)));
+
+    for (const m of readJournalMigrations(MIGRATIONS_FOLDER)) {
+      if (applied.has(m.when)) continue;
+      if (m.tables.length === 0) break; // nothing to check — let migrate() handle it
+      const [existing] = (await conn.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (?)",
+        [creds.database, m.tables],
+      )) as unknown as [{ table_name: string }[]];
+      const found = new Set(existing.map((r) => String(r.table_name).toLowerCase()));
+      if (m.tables.every((t) => found.has(t))) {
+        await conn.query(
+          `INSERT INTO \`${DRIZZLE_JOURNAL_TABLE}\` (hash, created_at) VALUES (?, ?)`,
+          [m.hash, m.when],
+        );
+        console.log(`[db] baselined migration ${m.tag} (tables already exist)`);
+        applied.add(m.when);
+      } else {
+        break; // this one (and everything after it) still needs applying
+      }
+    }
+
+    await migrate(drizzleMysql(conn), { migrationsFolder: MIGRATIONS_FOLDER });
+    console.log("[db] schema is up to date");
+  } finally {
+    await conn.end();
+  }
+}
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   SUPER_ADMIN: ["*"],
@@ -506,6 +626,17 @@ const MIGRATIONS: Migration[] = [
 
 export async function initDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
+    // 0. Create the database + apply pending Drizzle migrations first, so a
+    // fresh device ends up with all tables automatically.
+    try {
+      await ensureSchema();
+    } catch (err) {
+      throw new Error(
+        `Schema setup failed: ${err instanceof Error ? err.message : String(err)} ` +
+          `(is MySQL running? check DATABASE_URL in .env)`,
+      );
+    }
+
     // Verify the database connection first.
     await db.execute(sql`select 1`);
 

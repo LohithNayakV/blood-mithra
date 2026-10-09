@@ -1,8 +1,8 @@
 # 🩸 Blood Mithra — Community Blood Donor Network
 
-A production-ready blood donor network platform: **React (Next.js App Router) + REST APIs (Node.js runtime) + PostgreSQL (Drizzle ORM)**. One platform for donors, volunteers, hospitals, blood banks, NGOs and administrators.
+A production-ready blood donor network platform: **React (Next.js App Router) + REST APIs (Node.js runtime) + MySQL (Drizzle ORM)**. One platform for donors, volunteers, hospitals, blood banks, NGOs and administrators.
 
-> Architecture: **React → REST APIs → Node.js (Next.js API Routes) → PostgreSQL**
+> Architecture: **React → REST APIs → Node.js (Next.js API Routes) → MySQL**
 > The REST API layer is implemented as versioned Next.js Route Handlers (`/api/v1/*`)
 > running on the Node.js runtime — the same contract a standalone Express server would
 > expose, ready for future Android/iOS apps to consume.
@@ -22,24 +22,45 @@ A production-ready blood donor network platform: **React (Next.js App Router) + 
 - **Volunteer management**: profiles, districts, assignments to donors/requests, dashboards with pending/completed follow-ups.
 - **Blood camps**: camp directory, registrations, targets, organizers.
 - **Project Control Dashboard (admin)**: summary cards (donors, volunteers, requests, donations, certificates, schedules, camps), donor management table (search/filter/sort/verify/status/assign), request tracking with wave escalation, certificate tracking, volunteer control, and analytics (growth, blood groups, district coverage, activity, donations).
-- **Security**: JWT auth (jose), bcrypt password hashing, OTP verification, RBAC (8 roles), rate limiting, parameterized queries (Drizzle/pg — no raw string SQL), masked donor contacts, audit logging, consent management.
+- **Security**: JWT auth (jose), bcrypt password hashing, OTP verification, RBAC (8 roles), rate limiting, parameterized queries (Drizzle/mysql2 — no raw string SQL), masked donor contacts, audit logging, consent management.
 
 ## 🗄️ Self-initializing database
 
-On server start (`src/instrumentation.ts` → `src/db/init.ts`) the app:
+On server start (`src/instrumentation.ts` → `src/db/init.ts`) the app sets up
+MySQL automatically — a fresh device only needs MySQL running:
 
-1. Verifies the PostgreSQL connection.
-2. Creates the `migrations` bookkeeping table.
-3. Runs pending setup migrations exactly once (tracked in `migrations`).
-4. Seeds: roles & permissions, a super admin, system settings (incl. eligibility rules), districts/cities, hospitals, blood banks, organizations, camps, volunteers, demo donors (with health/availability/schedules/donations/certificates) and a demo emergency request.
+1. Creates the database if it doesn't exist (`CREATE DATABASE IF NOT EXISTS`).
+2. Applies pending Drizzle migrations from `drizzle/` (tracked in
+   `__drizzle_migrations`; migrations whose tables already exist are baselined
+   instead of re-running, so existing databases never error).
+3. Creates the `migrations` bookkeeping table.
+4. Runs pending seed migrations exactly once (tracked in `migrations`).
+5. Seeds: roles & permissions, a super admin, system settings (incl. eligibility rules), districts/cities, hospitals, blood banks, organizations, camps, volunteers, demo donors (with health/availability/schedules/donations/certificates) and a demo emergency request.
 
-## 🚀 Quick start
+## 🚀 Quick start (including a brand-new device)
 
 ```bash
-npm install          # install dependencies
-npx drizzle-kit push # create tables (schema: src/db/schema.ts)
-npm run dev          # start — DB init + seed run automatically
+npm install     # install dependencies
+cp .env.example .env   # only if .env is missing; defaults fit local XAMPP
+# make sure MySQL is running (XAMPP: user root, no password, port 3306)
+npm run dev     # start — database, tables and seed data are created automatically
 ```
+
+Manual database control (optional — auto-setup already covers fresh devices):
+
+```bash
+npm run db:init       # create DB + apply pending migrations (safe, idempotent)
+npm run db:init -- --fresh   # ⚠️ dev only: DROP + recreate everything
+npm run db:generate   # create a new migration from schema changes
+npm run db:migrate     # apply pending migrations
+npm run db:push        # push schema directly (dev shortcut, no migration file)
+npm run db:check       # verify migrations match the schema
+npm run db:studio      # open Drizzle Studio
+```
+
+> After editing `src/db/schema.ts`, run `npm run db:generate` and commit the
+> new files under `drizzle/` — every other device picks them up automatically
+> on next start.
 
 Production:
 
@@ -91,19 +112,19 @@ All endpoints accept/return JSON and support `Authorization: Bearer <token>`.
 
 ## 🗃️ Database
 
-PostgreSQL via Drizzle ORM (`src/db/schema.ts`). Tables: `users`, `roles`, `user_roles`, `donors`, `donor_profiles`, `donor_health_records`, `donor_health_history`, `donor_availability`, `donor_schedules`, `donations`, `donation_certificates`, `blood_requests`, `request_notifications`, `hospitals`, `blood_banks`, `organizations`, `volunteers`, `volunteer_assignments`, `blood_camps`, `camp_registrations`, `notifications`, `otp_verifications`, `consents`, `system_settings`, `districts`, `cities`, `audit_logs`, `follow_ups`, `migrations` — all with primary keys, foreign keys, indexes and timestamps.
+MySQL / MariaDB via Drizzle ORM (`src/db/schema.ts`, migrations in `drizzle/`). Tables: `users`, `roles`, `user_roles`, `donors`, `donor_profiles`, `donor_health_records`, `donor_health_history`, `donor_availability`, `donor_schedules`, `donations`, `donation_certificates`, `blood_requests`, `request_notifications`, `hospitals`, `blood_banks`, `organizations`, `volunteers`, `volunteer_assignments`, `blood_camps`, `camp_registrations`, `notifications`, `otp_verifications`, `consents`, `system_settings`, `districts`, `cities`, `audit_logs`, `follow_ups`, `migrations` — all with primary keys, foreign keys, indexes and timestamps.
 
-## ⚙️ Environment (`.env`)
+## ⚙️ Environment (`.env` — see `.env.example`)
 
 ```
 PORT=5000
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
+DATABASE_URL=mysql://root:@127.0.0.1:3306/app_db
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
 DB_NAME=app_db
-JWT_SECRET=change-me
+JWT_SECRET=change-me-in-production
 OTP_EXPIRY_MINUTES=10
 ```
 
