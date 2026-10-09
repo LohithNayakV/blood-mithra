@@ -5,12 +5,21 @@ import {
   text,
   boolean,
   timestamp,
+  datetime,
   decimal,
   date,
   json,
   uniqueIndex,
   index,
 } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
+
+// NOTE: optional event times use `datetime` (not `timestamp`) with an explicit
+// `.default(sql`NULL`)`. A bare `timestamp` column gets an implicit
+// zero-date/CURRENT_TIMESTAMP default from MariaDB/MySQL, which strict
+// sql_modes reject with ER_INVALID_DEFAULT (1067) — or silently store wrong
+// defaults. (`datetime` is nullable by default, so `DEFAULT NULL` is valid.)
+// Required timestamps that are always provided on insert keep `timestamp`.
 
 // ---------------------------------------------------------------------------
 // Blood Mithra — database schema (MySQL via Drizzle ORM)
@@ -42,7 +51,7 @@ export const users = mysqlTable("users", {
   roleId: int("role_id").references(() => roles.id),
   status: varchar("status", { length: 32 }).default("ACTIVE").notNull(),
   isVerified: boolean("is_verified").default(false).notNull(),
-  lastLogin: timestamp("last_login"),
+  lastLogin: datetime("last_login", { mode: "date" }).default(sql`NULL`),
   ...timestamps,
 }, (t) => [index("users_role_idx").on(t.roleId), index("users_status_idx").on(t.status)]);
 
@@ -130,8 +139,8 @@ export const donorProfiles = mysqlTable("donor_profiles", {
   milestones: json("milestones").$type<Record<string, unknown>[]>().default([]),
   recognitionHistory: json("recognition_history").$type<Record<string, unknown>[]>().default([]),
   emergencyAvailability: boolean("emergency_availability").default(true).notNull(),
-  lastAvailabilityConfirmation: timestamp("last_availability_confirmation"),
-  nextAvailabilityConfirmation: timestamp("next_availability_confirmation"),
+  lastAvailabilityConfirmation: datetime("last_availability_confirmation", { mode: "date" }).default(sql`NULL`),
+  nextAvailabilityConfirmation: datetime("next_availability_confirmation", { mode: "date" }).default(sql`NULL`),
   ...timestamps,
 }, (t) => [index("donor_profiles_donor_idx").on(t.donorId)]);
 
@@ -150,7 +159,7 @@ export const donorHealthRecords = mysqlTable("donor_health_records", {
   recentVaccination: boolean("recent_vaccination").default(false),
   pregnancyRelated: text("pregnancy_related"),
   weight: decimal("weight", { precision: 5, scale: 2 }),
-  lastHealthConfirmation: timestamp("last_health_confirmation"),
+  lastHealthConfirmation: datetime("last_health_confirmation", { mode: "date" }).default(sql`NULL`),
   healthDeclaration: boolean("health_declaration").default(false).notNull(),
   screeningStatus: varchar("screening_status", { length: 32 }).default("PENDING").notNull(),
   eligibilityRemarks: text("eligibility_remarks"),
@@ -175,7 +184,7 @@ export const donorAvailability = mysqlTable("donor_availability", {
   donorId: int("donor_id").references(() => donors.id, { onDelete: "cascade" }).notNull(),
   available: boolean("available").notNull(),
   confirmedAt: timestamp("confirmed_at").defaultNow().notNull(),
-  nextConfirmationDate: timestamp("next_confirmation_date"),
+  nextConfirmationDate: datetime("next_confirmation_date", { mode: "date" }).default(sql`NULL`),
   source: varchar("source", { length: 32 }).default("SELF"),
   notes: text("notes"),
 }, (t) => [index("donor_availability_donor_idx").on(t.donorId)]);
@@ -286,7 +295,7 @@ export const bloodRequests = mysqlTable("blood_requests", {
   district: varchar("district", { length: 120 }),
   latitude: decimal("latitude", { precision: 10, scale: 8 }),
   longitude: decimal("longitude", { precision: 11, scale: 8 }),
-  requiredAt: timestamp("required_at"),
+  requiredAt: datetime("required_at", { mode: "date" }).default(sql`NULL`),
   urgency: varchar("urgency", { length: 16 }).default("MEDIUM").notNull(), // LOW | MEDIUM | HIGH | CRITICAL
   contactInfo: varchar("contact_info", { length: 255 }),
   details: text("details"),
@@ -310,8 +319,8 @@ export const requestNotifications = mysqlTable("request_notifications", {
   status: varchar("status", { length: 32 }).default("SENT").notNull(), // SENT | VIEWED | ACCEPTED | REJECTED | NO_RESPONSE
   distanceKm: decimal("distance_km", { precision: 8, scale: 2 }),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-  viewedAt: timestamp("viewed_at"),
-  respondedAt: timestamp("responded_at"),
+  viewedAt: datetime("viewed_at", { mode: "date" }).default(sql`NULL`),
+  respondedAt: datetime("responded_at", { mode: "date" }).default(sql`NULL`),
 }, (t) => [
   index("request_notifications_request_idx").on(t.requestId),
   index("request_notifications_donor_idx").on(t.donorId),
@@ -345,7 +354,7 @@ export const volunteerAssignments = mysqlTable("volunteer_assignments", {
   assignmentType: varchar("assignment_type", { length: 32 }).notNull(), // DONOR_SUPPORT | REQUEST_SUPPORT | CAMP_SUPPORT | FOLLOW_UP
   status: varchar("status", { length: 32 }).default("PENDING").notNull(),
   assignedAt: timestamp("assigned_at").defaultNow().notNull(),
-  completedAt: timestamp("completed_at"),
+  completedAt: datetime("completed_at", { mode: "date" }).default(sql`NULL`),
 }, (t) => [index("volunteer_assignments_volunteer_idx").on(t.volunteerId)]);
 
 // --- Blood camps -------------------------------------------------------------
@@ -391,7 +400,7 @@ export const notifications = mysqlTable("notifications", {
   channel: varchar("channel", { length: 16 }).default("IN_APP"),
   status: varchar("status", { length: 16 }).default("SENT").notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-  readAt: timestamp("read_at"),
+  readAt: datetime("read_at", { mode: "date" }).default(sql`NULL`),
 }, (t) => [index("notifications_donor_idx").on(t.donorId), index("notifications_user_idx").on(t.userId)]);
 
 export const otpVerifications = mysqlTable("otp_verifications", {
@@ -410,7 +419,7 @@ export const consents = mysqlTable("consents", {
   donorId: int("donor_id").references(() => donors.id, { onDelete: "cascade" }).notNull(),
   consentType: varchar("consent_type", { length: 64 }).notNull(),
   given: boolean("given").default(false).notNull(),
-  givenAt: timestamp("given_at"),
+  givenAt: datetime("given_at", { mode: "date" }).default(sql`NULL`),
   ipAddress: varchar("ip_address", { length: 64 }),
   version: varchar("version", { length: 16 }).default("1.0"),
 }, (t) => [index("consents_donor_idx").on(t.donorId)]);
@@ -444,7 +453,7 @@ export const followUps = mysqlTable("follow_ups", {
   dueDate: timestamp("due_date").notNull(),
   status: varchar("status", { length: 32 }).default("PENDING").notNull(),
   notes: text("notes"),
-  completedAt: timestamp("completed_at"),
+  completedAt: datetime("completed_at", { mode: "date" }).default(sql`NULL`),
   createdBy: int("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [index("follow_ups_status_idx").on(t.status), index("follow_ups_due_idx").on(t.dueDate)]);

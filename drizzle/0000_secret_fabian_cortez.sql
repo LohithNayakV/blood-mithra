@@ -62,7 +62,7 @@ CREATE TABLE `blood_requests` (
 	`district` varchar(120),
 	`latitude` decimal(10,8),
 	`longitude` decimal(11,8),
-	`required_at` timestamp,
+	`required_at` datetime DEFAULT NULL,
 	`urgency` varchar(16) NOT NULL DEFAULT 'MEDIUM',
 	`contact_info` varchar(255),
 	`details` text,
@@ -102,7 +102,7 @@ CREATE TABLE `consents` (
 	`donor_id` int NOT NULL,
 	`consent_type` varchar(64) NOT NULL,
 	`given` boolean NOT NULL DEFAULT false,
-	`given_at` timestamp,
+	`given_at` datetime DEFAULT NULL,
 	`ip_address` varchar(64),
 	`version` varchar(16) DEFAULT '1.0',
 	CONSTRAINT `consents_id` PRIMARY KEY(`id`)
@@ -159,7 +159,7 @@ CREATE TABLE `donor_availability` (
 	`donor_id` int NOT NULL,
 	`available` boolean NOT NULL,
 	`confirmed_at` timestamp NOT NULL DEFAULT (now()),
-	`next_confirmation_date` timestamp,
+	`next_confirmation_date` datetime DEFAULT NULL,
 	`source` varchar(32) DEFAULT 'SELF',
 	`notes` text,
 	CONSTRAINT `donor_availability_id` PRIMARY KEY(`id`)
@@ -189,7 +189,7 @@ CREATE TABLE `donor_health_records` (
 	`recent_vaccination` boolean DEFAULT false,
 	`pregnancy_related` text,
 	`weight` decimal(5,2),
-	`last_health_confirmation` timestamp,
+	`last_health_confirmation` datetime DEFAULT NULL,
 	`health_declaration` boolean NOT NULL DEFAULT false,
 	`screening_status` varchar(32) NOT NULL DEFAULT 'PENDING',
 	`eligibility_remarks` text,
@@ -209,8 +209,8 @@ CREATE TABLE `donor_profiles` (
 	`milestones` json DEFAULT ('[]'),
 	`recognition_history` json DEFAULT ('[]'),
 	`emergency_availability` boolean NOT NULL DEFAULT true,
-	`last_availability_confirmation` timestamp,
-	`next_availability_confirmation` timestamp,
+	`last_availability_confirmation` datetime DEFAULT NULL,
+	`next_availability_confirmation` datetime DEFAULT NULL,
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	`updated_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `donor_profiles_id` PRIMARY KEY(`id`),
@@ -277,7 +277,7 @@ CREATE TABLE `follow_ups` (
 	`due_date` timestamp NOT NULL,
 	`status` varchar(32) NOT NULL DEFAULT 'PENDING',
 	`notes` text,
-	`completed_at` timestamp,
+	`completed_at` datetime DEFAULT NULL,
 	`created_by` int,
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `follow_ups_id` PRIMARY KEY(`id`)
@@ -319,7 +319,7 @@ CREATE TABLE `notifications` (
 	`channel` varchar(16) DEFAULT 'IN_APP',
 	`status` varchar(16) NOT NULL DEFAULT 'SENT',
 	`sent_at` timestamp NOT NULL DEFAULT (now()),
-	`read_at` timestamp,
+	`read_at` datetime DEFAULT NULL,
 	CONSTRAINT `notifications_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -359,8 +359,8 @@ CREATE TABLE `request_notifications` (
 	`status` varchar(32) NOT NULL DEFAULT 'SENT',
 	`distance_km` decimal(8,2),
 	`sent_at` timestamp NOT NULL DEFAULT (now()),
-	`viewed_at` timestamp,
-	`responded_at` timestamp,
+	`viewed_at` datetime DEFAULT NULL,
+	`responded_at` datetime DEFAULT NULL,
 	CONSTRAINT `request_notifications_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -403,7 +403,7 @@ CREATE TABLE `users` (
 	`role_id` int,
 	`status` varchar(32) NOT NULL DEFAULT 'ACTIVE',
 	`is_verified` boolean NOT NULL DEFAULT false,
-	`last_login` timestamp,
+	`last_login` datetime DEFAULT NULL,
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	`updated_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `users_id` PRIMARY KEY(`id`)
@@ -417,7 +417,7 @@ CREATE TABLE `volunteer_assignments` (
 	`assignment_type` varchar(32) NOT NULL,
 	`status` varchar(32) NOT NULL DEFAULT 'PENDING',
 	`assigned_at` timestamp NOT NULL DEFAULT (now()),
-	`completed_at` timestamp,
+	`completed_at` datetime DEFAULT NULL,
 	CONSTRAINT `volunteer_assignments_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint

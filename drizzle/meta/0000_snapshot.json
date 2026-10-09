@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "937402e6-f86a-4139-ade1-58bbbf086833",
+  "id": "6f4637fe-3df7-46f2-b263-7b43f54e5212",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "audit_logs": {
@@ -500,10 +500,11 @@
         },
         "required_at": {
           "name": "required_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "urgency": {
           "name": "urgency",
@@ -873,10 +874,11 @@
         },
         "given_at": {
           "name": "given_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "ip_address": {
           "name": "ip_address",
@@ -1407,10 +1409,11 @@
         },
         "next_confirmation_date": {
           "name": "next_confirmation_date",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "source": {
           "name": "source",
@@ -1670,10 +1673,11 @@
         },
         "last_health_confirmation": {
           "name": "last_health_confirmation",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "health_declaration": {
           "name": "health_declaration",
@@ -1836,17 +1840,19 @@
         },
         "last_availability_confirmation": {
           "name": "last_availability_confirmation",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "next_availability_confirmation": {
           "name": "next_availability_confirmation",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "created_at": {
           "name": "created_at",
@@ -2432,10 +2438,11 @@
         },
         "completed_at": {
           "name": "completed_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "created_by": {
           "name": "created_by",
@@ -2786,10 +2793,11 @@
         },
         "read_at": {
           "name": "read_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         }
       },
       "indexes": {
@@ -3109,17 +3117,19 @@
         },
         "viewed_at": {
           "name": "viewed_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "responded_at": {
           "name": "responded_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         }
       },
       "indexes": {
@@ -3460,10 +3470,11 @@
         },
         "last_login": {
           "name": "last_login",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         },
         "created_at": {
           "name": "created_at",
@@ -3580,10 +3591,11 @@
         },
         "completed_at": {
           "name": "completed_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "NULL"
         }
       },
       "indexes": {

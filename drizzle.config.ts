@@ -14,7 +14,7 @@ function credentials() {
         port: Number(u.port || "3306"),
         user: decodeURIComponent(u.username || "root"),
         password: decodeURIComponent(u.password || ""),
-        database: decodeURIComponent(u.pathname.replace(/^\//, "") || "app_db"),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "") || "blood_mithra"),
       };
     } catch {
       // fall through to individual vars below
@@ -25,7 +25,7 @@ function credentials() {
     port: Number(process.env.DB_PORT || "3306"),
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "app_db",
+    database: process.env.DB_NAME || "blood_mithra",
   };
 }
 

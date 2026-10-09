@@ -118,12 +118,12 @@ MySQL / MariaDB via Drizzle ORM (`src/db/schema.ts`, migrations in `drizzle/`). 
 
 ```
 PORT=5000
-DATABASE_URL=mysql://root:@127.0.0.1:3306/app_db
+DATABASE_URL=mysql://root:@127.0.0.1:3306/blood_mithra
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=
-DB_NAME=app_db
+DB_NAME=blood_mithra
 JWT_SECRET=change-me-in-production
 OTP_EXPIRY_MINUTES=10
 ```

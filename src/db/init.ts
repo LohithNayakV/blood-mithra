@@ -3,8 +3,6 @@ import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import mysql from "mysql2/promise";
-import { drizzle as drizzleMysql } from "drizzle-orm/mysql2";
-import { migrate } from "drizzle-orm/mysql2/migrator";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import {
@@ -59,7 +57,7 @@ function parseDatabaseUrl(url: string) {
     port: Number(u.port || "3306"),
     user: decodeURIComponent(u.username || "root"),
     password: decodeURIComponent(u.password || ""),
-    database: decodeURIComponent(u.pathname.replace(/^\//, "") || "app_db"),
+    database: decodeURIComponent(u.pathname.replace(/^\//, "") || "blood_mithra"),
   };
 }
 
@@ -67,6 +65,7 @@ interface JournalMigration {
   tag: string;
   when: number;
   hash: string;
+  sql: string;
   tables: string[];
 }
 
@@ -87,9 +86,26 @@ function readJournalMigrations(migrationsFolder: string): JournalMigration[] {
       tag: e.tag,
       when: e.when,
       hash: createHash("sha256").update(sqlText).digest("hex"),
+      sql: sqlText,
       tables: [...new Set(tables)],
     };
   });
+}
+
+/** Error codes that mean "this object already exists" — safe to skip when
+ * repairing a half-built database (e.g. a previous migration run died
+ * midway). Anything else aborts with a clear message. */
+const TOLERATED_SQL_CODES = new Set([
+  "ER_TABLE_EXISTS_ERROR", // 1050 CREATE TABLE on existing table
+  "ER_DUP_FIELDNAME", // 1060 ADD COLUMN that already exists
+  "ER_MULTIPLE_PRI_KEY", // 1068 duplicate primary key
+  "ER_DUP_KEYNAME", // 1061 duplicate index/key name
+  "ER_FK_DUP_NAME", // 1826 duplicate foreign-key constraint name
+]);
+
+function sqlErrorDetails(err: unknown): string {
+  const e = err as { code?: string; errno?: number; sqlMessage?: string; message?: string };
+  return `${e.code ?? "UNKNOWN"}${e.errno ? ` (${e.errno})` : ""}: ${e.sqlMessage ?? e.message ?? String(err)}`;
 }
 
 /**
@@ -97,11 +113,13 @@ function readJournalMigrations(migrationsFolder: string): JournalMigration[] {
  *
  * 1. `CREATE DATABASE IF NOT EXISTS` — a brand-new device only needs MySQL
  *    running; no manual setup.
- * 2. Baseline: journal entries whose tables already exist (DBs created by an
- *    older script/`db push` predate the `__drizzle_migrations` journal) are
- *    recorded as applied instead of re-running and failing with
- *    "table already exists".
- * 3. The official `migrate()` applies anything still pending.
+ * 2. Each journal migration is applied statement-by-statement:
+ *    - fully applied → skipped;
+ *    - all tables already present → recorded as applied (baseline, for DBs
+ *      created before the `__drizzle_migrations` journal existed);
+ *    - otherwise statements run one by one, tolerating "already exists"
+ *      leftovers from an interrupted earlier run — this also repairs a
+ *      half-built database instead of failing on the first CREATE TABLE.
  */
 async function ensureSchema(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -137,26 +155,55 @@ async function ensureSchema(): Promise<void> {
     const applied = new Set(appliedRows.map((r) => Number(r.created_at)));
 
     for (const m of readJournalMigrations(MIGRATIONS_FOLDER)) {
-      if (applied.has(m.when)) continue;
-      if (m.tables.length === 0) break; // nothing to check — let migrate() handle it
-      const [existing] = (await conn.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (?)",
-        [creds.database, m.tables],
-      )) as unknown as [{ table_name: string }[]];
-      const found = new Set(existing.map((r) => String(r.table_name).toLowerCase()));
-      if (m.tables.every((t) => found.has(t))) {
+      if (applied.has(m.when)) {
+        continue;
+      }
+      const statements = m.sql
+        .split("--> statement-breakpoint")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      // Fast path: every table this migration creates already exists.
+      let needsApply = true;
+      if (m.tables.length > 0) {
+        const [existing] = (await conn.query(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (?)",
+          [creds.database, m.tables],
+        )) as unknown as [{ table_name: string }[]];
+        const found = new Set(existing.map((r) => String(r.table_name).toLowerCase()));
+        needsApply = !m.tables.every((t) => found.has(t));
+      }
+      if (!needsApply) {
         await conn.query(
           `INSERT INTO \`${DRIZZLE_JOURNAL_TABLE}\` (hash, created_at) VALUES (?, ?)`,
           [m.hash, m.when],
         );
         console.log(`[db] baselined migration ${m.tag} (tables already exist)`);
         applied.add(m.when);
-      } else {
-        break; // this one (and everything after it) still needs applying
+        continue;
       }
-    }
 
-    await migrate(drizzleMysql(conn), { migrationsFolder: MIGRATIONS_FOLDER });
+      for (const statement of statements) {
+        try {
+          await conn.query(statement);
+        } catch (err) {
+          const code = (err as { code?: string }).code;
+          if (code && TOLERATED_SQL_CODES.has(code)) {
+            console.log(`[db] ${m.tag}: already exists, continuing (${code})`);
+            continue;
+          }
+          throw new Error(
+            `Migration ${m.tag} failed on: ${statement.split("\n")[0].slice(0, 90)}… → ${sqlErrorDetails(err)}`,
+          );
+        }
+      }
+      await conn.query(
+        `INSERT INTO \`${DRIZZLE_JOURNAL_TABLE}\` (hash, created_at) VALUES (?, ?)`,
+        [m.hash, m.when],
+      );
+      console.log(`[db] applied migration ${m.tag} (${statements.length} statements)`);
+      applied.add(m.when);
+    }
     console.log("[db] schema is up to date");
   } finally {
     await conn.end();

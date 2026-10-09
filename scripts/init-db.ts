@@ -27,7 +27,7 @@ function credentials() {
         port: Number(u.port || "3306"),
         user: decodeURIComponent(u.username || "root"),
         password: decodeURIComponent(u.password || ""),
-        database: decodeURIComponent(u.pathname.replace(/^\//, "") || "app_db"),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "") || ""),
       };
     } catch {
       // fall through to individual vars
@@ -38,7 +38,7 @@ function credentials() {
     port: Number(process.env.DB_PORT || "3306"),
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "app_db",
+    database: process.env.DB_NAME || "blood_mithra",
   };
 }
 
@@ -87,6 +87,16 @@ async function initDatabase() {
     ];
     const applied = new Set(appliedRows.map((r) => Number(r.created_at)));
 
+    // "Already exists" outcomes are safe to skip — they repair half-built
+    // databases left behind by an interrupted earlier run.
+    const tolerated = new Set([
+      "ER_TABLE_EXISTS_ERROR", // 1050 CREATE TABLE on existing table
+      "ER_DUP_FIELDNAME", // 1060 ADD COLUMN that already exists
+      "ER_MULTIPLE_PRI_KEY", // 1068 duplicate primary key
+      "ER_DUP_KEYNAME", // 1061 duplicate index/key name
+      "ER_FK_DUP_NAME", // 1826 duplicate foreign-key constraint name
+    ]);
+
     let appliedCount = 0;
     let skippedCount = 0;
 
@@ -129,11 +139,13 @@ async function initDatabase() {
           await conn.query(statement);
         } catch (err) {
           const code = (err as { code?: string }).code;
-          if (code === "ER_TABLE_EXISTS_ERROR") {
-            console.log(`  (table already exists, continuing)`);
+          if (code && tolerated.has(code)) {
+            console.log(`  (already exists, continuing) [${code}]`);
             continue;
           }
-          throw err;
+          const detail = (err as { sqlMessage?: string; message?: string }).sqlMessage ??
+            (err instanceof Error ? err.message : String(err));
+          throw new Error(`Migration ${entry.tag} failed on: ${statement.split("\n")[0].slice(0, 90)}… → ${code ?? "UNKNOWN"}: ${detail}`);
         }
       }
       const hash = createHash("sha256").update(sqlText).digest("hex");
@@ -154,6 +166,6 @@ async function initDatabase() {
 
 initDatabase().catch((err) => {
   console.error("Database initialization failed:", err instanceof Error ? err.message : err);
-  console.error("Is MySQL running? Check DATABASE_URL in .env (default: mysql://root:@127.0.0.1:3306/app_db for XAMPP).");
+  console.error("Is MySQL running? Check DATABASE_URL in .env (default: mysql://root:@127.0.0.1:3306/blood_mithra for XAMPP).");
   process.exit(1);
 });
